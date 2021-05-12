@@ -2,7 +2,7 @@ import Foundation
 
 struct Engine
 {
-	var tick : ((Float)->())!
+	var tick : ((UnsafeMutableRawPointer)->())!
 	var last_tick_start : Date = Date()
 	var should_exit = false
 }
@@ -17,25 +17,35 @@ struct Library
 
 var engine = Engine()
 var lib = Library(path:"./game.dylib")
-load_library(&lib, &engine)
+
+//load_library(&lib, &engine)
+load_library_struct(&lib, &engine)
+
+struct Data
+{
+	var one:Float
+	var two:Int
+}
+
+var local_data = Data(one:1.111, two:2)
+
 
 repeat {
 
 	// Check if we need to load the new dylib
-	if file_updated (lib.path, lib.last_seen).0 { load_library(&lib, &engine) }
+	if file_updated (lib.path, lib.last_seen).0 { load_library_struct(&lib, &engine) }
 
 	// call the tick
 
-	let delta = Float(-engine.last_tick_start.timeIntervalSinceNow)
+	// let delta = Float(-engine.last_tick_start.timeIntervalSinceNow)
 	engine.last_tick_start = Date()
-	engine.tick(delta)
+	engine.tick(&local_data)
+
+	print(local_data.one, local_data.two)
 
 } while engine.should_exit == false
 
-
-
-
-func load_library (_ library:inout Library, _ engine:inout Engine)
+func load_library_struct (_ library:inout Library, _ engine:inout Engine)
 {
 	dlclose(library.handle)
 
@@ -44,12 +54,12 @@ func load_library (_ library:inout Library, _ engine:inout Engine)
 	if library.handle == nil { print("Couldn't load the libary"); exit(0) }
 
 	// Get the function's symbol
-	library.symbol = dlsym(library.handle, "external_func")
+	library.symbol = dlsym(library.handle, "external_struct")
 	if let t = dlerror() { print(String(cString: t)); exit(0) } 
 	if library.symbol == nil { print("Couldn't find the external function"); exit(0) }
 
 	// Cast the unsafe pointer symbol to a swift callable func
-	typealias func_alias = @convention(c) (Float)->()
+	typealias func_alias = @convention(c) (UnsafeMutableRawPointer)->()
 	engine.tick = unsafeBitCast(library.symbol, to:func_alias.self)
 
 	print("Updated the dylib")
@@ -58,6 +68,31 @@ func load_library (_ library:inout Library, _ engine:inout Engine)
 
 	library.last_seen = file_modified(library.path)
 }
+
+
+// func load_library (_ library:inout Library, _ engine:inout Engine)
+// {
+// 	dlclose(library.handle)
+
+// 	library.handle = dlopen(library.path, RTLD_NOW)
+// 	if let s = dlerror() { print(String(cString: s)) } 
+// 	if library.handle == nil { print("Couldn't load the libary"); exit(0) }
+
+// 	// Get the function's symbol
+// 	library.symbol = dlsym(library.handle, "external_func")
+// 	if let t = dlerror() { print(String(cString: t)); exit(0) } 
+// 	if library.symbol == nil { print("Couldn't find the external function"); exit(0) }
+
+// 	// Cast the unsafe pointer symbol to a swift callable func
+// 	typealias func_alias = @convention(c) (Float)->()
+// 	engine.tick = unsafeBitCast(library.symbol, to:func_alias.self)
+
+// 	print("Updated the dylib")
+// 	print(library.handle as Any)
+// 	print(library.symbol as Any)
+
+// 	library.last_seen = file_modified(library.path)
+// }
 
 func file_updated (_ path:String, _ date:Date) -> (Bool, Date)
 {
